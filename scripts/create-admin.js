@@ -1,61 +1,59 @@
-/**
- * Script to create the initial Super Admin account
- * Run: node scripts/create-admin.js
- * Requires: DATABASE_URL environment variable
- */
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcrypt');
-
 const prisma = new PrismaClient();
 
 const ADMIN_PHONE = '+967700000000';
 const ADMIN_PASSWORD = 'Admin@CashLine2024';
-const ADMIN_NAME = 'Super Admin';
-const ADMIN_EMAIL = 'admin@cashline.app';
+const STORE_PHONE = '+967711111111';
+const STORE_PASSWORD = 'Store@CashLine2024';
 
-async function createAdmin() {
-    console.log('🚀 Creating Super Admin account...');
+async function main() {
+    console.log('🚀 Setting up CashLine accounts...');
 
-    // Check if admin already exists
-    const existing = await prisma.user.findUnique({ where: { phone: ADMIN_PHONE } });
-    if (existing) {
-        console.log('⚠️  Admin already exists:', existing.phone);
-        console.log('📱 Phone:', ADMIN_PHONE);
-        console.log('🔑 Password:', ADMIN_PASSWORD);
-        return;
+    // ── 1. Super Admin ─────────────────────────────────────────────────────
+    const existingAdmin = await prisma.user.findUnique({ where: { phone: ADMIN_PHONE } });
+    if (!existingAdmin) {
+        const hash = await bcrypt.hash(ADMIN_PASSWORD, 12);
+        await prisma.user.create({
+            data: {
+                phone: ADMIN_PHONE, passwordHash: hash,
+                role: 'SUPER_ADMIN', fullName: 'Super Admin',
+                email: 'admin@cashline.app', isActive: true,
+                admin: { create: { permissions: { all: true } } },
+            },
+        });
+        console.log('✅ Admin created  →', ADMIN_PHONE, '/', ADMIN_PASSWORD);
+    } else {
+        console.log('ℹ️  Admin exists  →', ADMIN_PHONE);
     }
 
-    const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 12);
-
-    const admin = await prisma.user.create({
-        data: {
-            phone: ADMIN_PHONE,
-            passwordHash,
-            role: 'SUPER_ADMIN',
-            fullName: ADMIN_NAME,
-            email: ADMIN_EMAIL,
-            isActive: true,
-            admin: {
-                create: {
-                    permissions: {
-                        all: true,
-                        manageUsers: true,
-                        manageOrders: true,
-                        manageProducts: true,
-                        viewReports: true,
+    // ── 2. Main Store (managed from Admin Dashboard) ────────────────────────
+    const existingStore = await prisma.user.findUnique({ where: { phone: STORE_PHONE } });
+    if (!existingStore) {
+        const hash = await bcrypt.hash(STORE_PASSWORD, 12);
+        await prisma.user.create({
+            data: {
+                phone: STORE_PHONE, passwordHash: hash,
+                role: 'MERCHANT', fullName: 'Cash Line Store',
+                email: 'store@cashline.app', isActive: true,
+                merchant: {
+                    create: {
+                        storeName: 'كاش لاين - المتجر الرسمي',
+                        type: 'MERCHANT',
+                        description: 'المتجر الرسمي لتطبيق كاش لاين',
+                        address: 'اليمن - صنعاء', lat: 15.3694, lng: 44.1910,
+                        bankName: 'كاش لاين', accountName: 'Cash Line',
+                        commissionRate: 0.0, isApproved: true, approvedAt: new Date(),
                     },
                 },
             },
-        },
-    });
+        });
+        console.log('✅ Main Store created → يظهر الآن في لوحة التحكم عند إضافة منتجات');
+    } else {
+        console.log('ℹ️  Main Store exists already');
+    }
 
-    console.log('✅ Super Admin created successfully!');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('📱 Phone:   ', ADMIN_PHONE);
-    console.log('🔑 Password:', ADMIN_PASSWORD);
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🎉 Done!');
 }
 
-createAdmin()
-    .catch(console.error)
-    .finally(() => prisma.$disconnect());
+main().catch(console.error).finally(() => prisma.$disconnect());
