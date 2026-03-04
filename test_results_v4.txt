@@ -1,0 +1,14 @@
+﻿--- Phase 3 API Integration Test (Detailed) ---
+Logging in with +967777777777...
+ظ£à Login Successful
+Fetching details for merchant: f3493026-43a4-4715-bef3-c9c1ad4e212d
+--- Merchant Verification ---
+Bank Name: Yemen Bank
+Account Number: 1234567890123456
+Source: encrypted
+Security Warning: null
+Wallet Data: { balance: '5000', holdBalance: '1000', currency: 'YER' }
+ظ£à BANK DECRYPTION TEST: PASSED
+ظ£à WALLET BALANCE TEST: PASSED
+Fetching withdrawals...
+ظ£à Found 0 withdrawals
