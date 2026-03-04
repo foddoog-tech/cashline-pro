@@ -207,6 +207,7 @@ model Product {
   unit        String        @default("قطعة")
   isAvailable Boolean       @default(true) @map("is_available")
   stock       Int           @default(0)
+  discount    Int?          // نسبة الخصم %
   status      ProductStatus @default(PENDING)
 
   // Phase 1 Safe Additions
