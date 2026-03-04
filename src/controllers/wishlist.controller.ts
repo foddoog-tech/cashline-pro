@@ -19,7 +19,6 @@ export const getWishlist = async (req: Request, res: Response) => {
                         price: true,
                         imageUrl: true,
                         stock: true,
-                        discount: true
                     }
                 }
             },
