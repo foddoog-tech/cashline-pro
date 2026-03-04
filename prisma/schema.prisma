@@ -112,6 +112,7 @@ model Customer {
 
   orders    Order[]
   wishlists Wishlist[] // ✅ مرحلة 2
+  carts     Cart[]     // ✅ مرحلة 4
 
   @@index([deletedAt])
   @@map("customers")
@@ -215,7 +216,8 @@ model Product {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   orderItems OrderItem[]
-  wishlists  Wishlist[] // ✅ مرحلة 2
+  wishlists  Wishlist[]  // ✅ مرحلة 2
+  cartItems  CartItem[]  // ✅ مرحلة 4
 
   @@index([deletedAt])
   @@index([merchantId])
@@ -616,4 +618,48 @@ model PromoUsage {
   @@index([promoCodeId])
   @@index([customerId])
   @@map("promo_usages")
+}
+
+// ============================================
+// PHASE 4 — Wishlist & Cart
+// ============================================
+
+model Wishlist {
+  id         String   @id @default(uuid())
+  customerId String   @map("customer_id")
+  customer   Customer @relation(fields: [customerId], references: [userId], onDelete: Cascade)
+  productId  String   @map("product_id")
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@unique([customerId, productId])
+  @@index([customerId])
+  @@map("wishlists")
+}
+
+model Cart {
+  id         String     @id @default(uuid())
+  customerId String     @map("customer_id")
+  customer   Customer   @relation(fields: [customerId], references: [userId], onDelete: Cascade)
+  status     String     @default("ACTIVE") // ACTIVE | CHECKED_OUT
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+  items      CartItem[]
+
+  @@index([customerId, status])
+  @@map("carts")
+}
+
+model CartItem {
+  id        String  @id @default(uuid())
+  cartId    String  @map("cart_id")
+  cart      Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productId String  @map("product_id")
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int     @default(1)
+  price     Decimal @db.Decimal(10, 2)
+
+  @@unique([cartId, productId])
+  @@index([cartId])
+  @@map("cart_items")
 }
