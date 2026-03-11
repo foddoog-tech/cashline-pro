@@ -1,4 +1,4 @@
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
@@ -45,36 +45,41 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     }
 
     // Check Approval Status for DRIVER and MERCHANT
-    if (user.role === 'DRIVER') {
+      if (user.role === 'DRIVER') {
       const driver = await prisma.driver.findUnique({ where: { userId: user.id } });
-      if (!driver?.isApproved) {
+      let isApproved = driver?.isApproved ?? false;
+      let rejectionReason = null;
+
+      if (!isApproved) {
         // Fetch rejection reason
         const notification = await prisma.notification.findFirst({
           where: { userId: user.id, type: 'ACCOUNT_REJECTED' },
           orderBy: { createdAt: 'desc' }
         });
-        const reason = notification?.data ? (notification.data as any).reason : null;
-
-        return res.status(403).json({
-          status: 'error',
-          message: reason ? `طھظ… ط±ظپط¶ ط·ظ„ط¨ظƒ ظ„ظ„ط³ط¨ط¨: ${reason}` : 'ط­ط³ط§ط¨ظƒ ظ‚ظٹط¯ ط§ظ„ظ…ط±ط§ط¬ط¹ط© ط£ظˆ طھظ… ط±ظپط¶ظ‡. ظٹط±ط¬ظ‰ ط§ظ„طھظˆط§طµظ„ ظ…ط¹ ط§ظ„ط¯ط¹ظ….',
-        });
+        rejectionReason = notification?.data ? (notification.data as any).reason : null;
       }
+      
+      (user as any).isApproved = isApproved;
+      (user as any).rejectionReason = rejectionReason;
+
     } else if (user.role === 'MERCHANT' || user.role === 'FAMILY_PRODUCER') {
       const merchant = await prisma.merchant.findUnique({ where: { userId: user.id } });
-      if (!merchant?.isApproved) {
+      let isApproved = merchant?.isApproved ?? false;
+      let rejectionReason = null;
+
+      if (!isApproved) {
         // Fetch rejection reason
         const notification = await prisma.notification.findFirst({
           where: { userId: user.id, type: 'ACCOUNT_REJECTED' },
           orderBy: { createdAt: 'desc' }
         });
-        const reason = notification?.data ? (notification.data as any).reason : null;
-
-        return res.status(403).json({
-          status: 'error',
-          message: reason ? `طھظ… ط±ظپط¶ ط·ظ„ط¨ظƒ ظ„ظ„ط³ط¨ط¨: ${reason}` : 'ط­ط³ط§ط¨ظƒ ظ‚ظٹط¯ ط§ظ„ظ…ط±ط§ط¬ط¹ط© ط£ظˆ طھظ… ط±ظپط¶ظ‡. ظٹط±ط¬ظ‰ ط§ظ„طھظˆط§طµظ„ ظ…ط¹ ط§ظ„ط¯ط¹ظ….',
-        });
+        rejectionReason = notification?.data ? (notification.data as any).reason : null;
       }
+      
+      (user as any).isApproved = isApproved;
+      (user as any).rejectionReason = rejectionReason;
+    } else {
+      (user as any).isApproved = true; // Customers are implicitly approved
     }
 
     // Update FCM token if provided
@@ -101,6 +106,8 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
           email: user.email,
           avatarUrl: user.avatarUrl,
           role: user.role,
+          isApproved: (user as any).isApproved,
+          rejectionReason: (user as any).rejectionReason,
         },
         tokens,
       },
@@ -247,6 +254,9 @@ export const registerMerchant = async (req: Request, res: Response, next: NextFu
 
     logger.info(`Merchant registered (pending approval): ${user.id}`);
 
+    // Generate tokens
+    const tokens = generateTokens(user.id, user.role);
+
     res.status(201).json({
       status: 'success',
       message: 'Registration successful. Pending admin approval.',
@@ -258,6 +268,8 @@ export const registerMerchant = async (req: Request, res: Response, next: NextFu
           role: user.role,
           isApproved: false,
         },
+        token: tokens.accessToken,
+        accessToken: tokens.accessToken,
       },
     });
   } catch (error) {
@@ -278,6 +290,8 @@ export const registerDriver = async (req: Request, res: Response, next: NextFunc
       accountNumber,
       accountName,
       idImageUrl,
+      vehicleImageUrl,   // ✅ صورة المركبة/اللوحة
+      licenseImageUrl,   // ✅ صورة الاستمارة
     } = req.body;
 
     // Check if user exists
@@ -310,6 +324,8 @@ export const registerDriver = async (req: Request, res: Response, next: NextFunc
             accountNumber,
             accountName,
             idImageUrl,
+            vehicleImageUrl,   // ✅ حفظ صورة المركبة
+            licenseImageUrl,   // ✅ حفظ صورة الاستمارة
             isApproved: false,
             isAvailable: false,
           },
@@ -322,6 +338,9 @@ export const registerDriver = async (req: Request, res: Response, next: NextFunc
 
     logger.info(`Driver registered (pending approval): ${user.id}`);
 
+    // ✅ أضف token حتى يتمكن التطبيق من auto-login
+    const tokens = generateTokens(user.id, user.role);
+
     res.status(201).json({
       status: 'success',
       message: 'Registration successful. Pending admin approval.',
@@ -332,7 +351,14 @@ export const registerDriver = async (req: Request, res: Response, next: NextFunc
           fullName: user.fullName,
           role: user.role,
           isApproved: false,
+          vehicleType: user.driver?.vehicleType,
+          vehicleNumber: user.driver?.vehicleNumber,
+          bankName: user.driver?.bankName,
+          accountNumber: user.driver?.accountNumber,
+          accountName: user.driver?.accountName,
         },
+        token: tokens.accessToken,
+        accessToken: tokens.accessToken,
       },
     });
   } catch (error) {
