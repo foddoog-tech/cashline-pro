@@ -1,4 +1,4 @@
-﻿import { Request, Response } from 'express';
+import { Request, Response } from 'express';
 import prisma from '../lib/prisma';
 import { AuditService } from '../services/audit.service';
 import { EncryptionService } from '../services/encryption.service';
@@ -888,6 +888,195 @@ export const processWithdrawal = async (req: Request, res: Response) => {
 
     } catch (error: any) {
         console.error('Process withdrawal error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+    }
+};
+
+// ── Merchant Settlements ──────────────────────────────────────────────────
+
+/**
+ * GET /admin/finance/settlements
+ * Returns all merchants with unsettled sales amounts.
+ */
+export const getMerchantSettlements = async (req: Request, res: Response) => {
+    try {
+        const merchants = await prisma.merchant.findMany({
+            where: { isApproved: true },
+            include: {
+                user: { select: { fullName: true, phone: true } }
+            }
+        });
+
+        const results = await Promise.all(merchants.map(async (merchant) => {
+            const since = (merchant as any).lastSettledAt || new Date(0);
+
+            const aggregate = await prisma.payment.aggregate({
+                where: {
+                    order: {
+                        merchantId: merchant.userId,
+                        status: 'DELIVERED',
+                        deliveredAt: { gte: since }
+                    },
+                    status: { in: ['completed', 'distributed'] }
+                },
+                _sum: {
+                    totalAmount: true,
+                    platformFee: true,
+                    merchantNet: true
+                }
+            });
+
+            const totalSales = Number(aggregate._sum.totalAmount || 0);
+            const commission = Number(aggregate._sum.platformFee || 0);
+            const netDue = Number(aggregate._sum.merchantNet || 0);
+
+            return {
+                merchantId: merchant.userId,
+                storeName: merchant.storeName,
+                merchantName: merchant.user?.fullName,
+                phone: merchant.user?.phone,
+                commissionRate: Number(merchant.commissionRate),
+                lastSettledAt: (merchant as any).lastSettledAt ?? null,
+                totalSales,
+                commission,
+                netDue
+            };
+        }));
+
+        const totalNetDue = results.reduce((s, m) => s + m.netDue, 0);
+
+        return res.json({
+            success: true,
+            data: {
+                settlements: results,
+                pendingCount: results.filter(m => m.netDue > 0).length,
+                totalNetDue
+            }
+        });
+    } catch (error: any) {
+        console.error('getMerchantSettlements error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+    }
+};
+
+/**
+ * POST /admin/finance/settlements/:merchantId/settle
+ * Records a settlement and notifies the merchant.
+ */
+export const processMerchantSettlement = async (req: Request, res: Response) => {
+    const { merchantId } = req.params;
+    const { notes } = req.body;
+    const adminId = (req as any).user.userId;
+
+    try {
+        const merchant = await prisma.merchant.findUnique({
+            where: { userId: merchantId },
+            include: { user: { select: { fullName: true, phone: true } } }
+        });
+
+        if (!merchant) {
+            return res.status(404).json({ success: false, message: 'Merchant not found' });
+        }
+
+        const since = (merchant as any).lastSettledAt || new Date(0);
+
+        const aggregate = await prisma.payment.aggregate({
+            where: {
+                order: {
+                    merchantId,
+                    status: 'DELIVERED',
+                    deliveredAt: { gte: since }
+                },
+                status: { in: ['completed', 'distributed'] }
+            },
+            _sum: { merchantNet: true }
+        });
+
+        const netAmount = Number(aggregate._sum.merchantNet || 0);
+
+        if (netAmount <= 0) {
+            return res.status(400).json({ success: false, message: 'لا توجد مبالغ مستحقة لهذا التاجر' });
+        }
+
+        const now = new Date();
+
+        // Record lastSettledAt on Merchant
+        await (prisma.merchant as any).update({
+            where: { userId: merchantId },
+            data: { lastSettledAt: now }
+        });
+
+        // Audit log
+        await AuditService.log({
+            tableName: 'merchant_settlements',
+            recordId: merchantId,
+            action: 'PROCESS_SETTLEMENT',
+            newData: { netAmount, settledAt: now, notes },
+            performedBy: adminId,
+            ipAddress: req.ip,
+            userAgent: req.headers['user-agent'] as string
+        });
+
+        // Notify merchant
+        await notificationService.sendPushNotification(
+            merchantId,
+            '💰 تمت تسوية حسابك',
+            `تمت معالجة تسوية حسابك بمبلغ ${netAmount.toLocaleString()} ر.ي`
+        ).catch(() => { });
+
+        return res.json({
+            success: true,
+            message: 'تمت التسوية بنجاح',
+            data: { merchantId, storeName: merchant.storeName, netAmount, settledAt: now }
+        });
+    } catch (error: any) {
+        console.error('processMerchantSettlement error:', error);
+        return res.status(500).json({ success: false, message: error.message || 'Internal server error' });
+    }
+};
+
+// ── Update Merchant Store Image ────────────────────────────────────────────
+
+/**
+ * POST /admin/merchants/:id/store-image   (multipart/form-data, field: "image")
+ * Accepts a direct file upload and saves the public URL to storeImageUrl.
+ */
+export const updateMerchantStoreImage = async (req: Request, res: Response) => {
+    try {
+        const { id: merchantId } = req.params;
+
+        // Build image URL from uploaded file OR from body URL fallback
+        let storeImageUrl: string | undefined;
+        if (req.file) {
+            const baseUrl = process.env.BACKEND_URL || 'https://cashline-pro-production.up.railway.app';
+            storeImageUrl = `${baseUrl}/uploads/${req.file.filename}`;
+        } else {
+            storeImageUrl = req.body?.storeImageUrl;
+        }
+
+        if (!storeImageUrl) {
+            return res.status(400).json({ success: false, message: 'No image provided' });
+        }
+
+        const merchant = await prisma.merchant.findUnique({ where: { userId: merchantId } });
+        if (!merchant) {
+            return res.status(404).json({ success: false, message: 'Merchant not found' });
+        }
+
+        const updated = await (prisma.merchant as any).update({
+            where: { userId: merchantId },
+            data: { storeImageUrl },
+            select: { userId: true, storeName: true, storeImageUrl: true }
+        });
+
+        return res.json({
+            success: true,
+            message: `✅ تم تحديث صورة متجر "${merchant.storeName}"`,
+            data: { ...updated, logoUrl: storeImageUrl }
+        });
+
+    } catch (error: any) {
+        console.error('updateMerchantStoreImage error:', error);
         return res.status(500).json({ success: false, message: error.message || 'Internal server error' });
     }
 };

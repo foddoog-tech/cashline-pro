@@ -1,4 +1,4 @@
-﻿import { Request, Response } from 'express';
+import { Request, Response } from 'express';
 
 // Upload Single File
 export const uploadFile = (req: Request, res: Response) => {
@@ -7,16 +7,17 @@ export const uploadFile = (req: Request, res: Response) => {
             return res.status(400).json({ success: false, message: 'No file uploaded' });
         }
 
-        // Construct public URL
         const fileName = req.file.filename;
-        const url = `/uploads/${fileName}`;
+        // Build full public URL
+        const baseUrl = process.env.BACKEND_URL
+            || `${req.protocol}://${req.get('host')}`;
+        const url = `${baseUrl}/uploads/${fileName}`;
 
-        // Return URL to frontend/mobile app
         res.json({
             success: true,
             data: {
                 fileName: fileName,
-                url: url, // This is what gets saved in the DB
+                url: url,    // Full absolute URL saved to DB
                 size: req.file.size
             }
         });

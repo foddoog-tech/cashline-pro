@@ -147,7 +147,10 @@ model Merchant {
   approvedBy     String?   @map("approved_by")
 
   // Phase 1 Safe Additions
-  deletedAt DateTime? @map("deleted_at")
+  deletedAt     DateTime? @map("deleted_at")
+  lastSettledAt DateTime? @map("last_settled_at")
+  storeImageUrl String?   @map("store_image_url")
+
 
   products Product[]
   orders   Order[]

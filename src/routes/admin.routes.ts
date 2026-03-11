@@ -14,6 +14,8 @@ router.use(authorize('ADMIN', 'SUPER_ADMIN'));
 router.get('/approvals/:id', adminController.getApprovalDetails);
 router.get('/merchants/:id/details', adminController.getMerchantDetails);
 router.post('/approvals/:id/upload', upload.single('file'), adminController.uploadDriverDocument);
+router.post('/merchants/:id/store-image', upload.single('image'), adminController.updateMerchantStoreImage);
+router.put('/merchants/:id/store-image', adminController.updateMerchantStoreImage); // JSON {storeImageUrl}
 
 // 2. User Actions
 // Generic Users
@@ -38,6 +40,10 @@ router.get('/finance/summary', adminController.getDashboardStats);
 router.get('/finance/commissions', adminController.getCommissions);
 router.get('/finance/withdrawals', adminController.getWithdrawals);
 router.post('/finance/withdrawals/:id/process', adminController.processWithdrawal);
+
+// 5. Merchant Settlements
+router.get('/finance/settlements', adminController.getMerchantSettlements);
+router.post('/finance/settlements/:merchantId/settle', adminController.processMerchantSettlement);
 
 
 // 5. Reports & Stats

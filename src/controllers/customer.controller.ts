@@ -1,4 +1,4 @@
-﻿import { Request, Response } from 'express';
+import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -6,16 +6,19 @@ const prisma = new PrismaClient();
 // Get All Merchants (For Customer Display)
 export const getMerchants = async (req: Request, res: Response) => {
     try {
-        const { page = 1, limit = 10, search } = req.query;
+        const { page = 1, limit = 20, search, category } = req.query;
         const skip = (Number(page) - 1) * Number(limit);
 
         const where: any = {
-            type: { in: ['MERCHANT', 'FAMILY_PRODUCER'] },
-            isApproved: true
+            isApproved: true,
+            deletedAt: null
         };
 
         if (search) {
             where.storeName = { contains: String(search), mode: 'insensitive' };
+        }
+        if (category) {
+            where.type = String(category);
         }
 
         const [merchants, total] = await Promise.all([
@@ -23,17 +26,37 @@ export const getMerchants = async (req: Request, res: Response) => {
                 where,
                 skip,
                 take: Number(limit),
-                include: {
-                    user: { select: { fullName: true, avatarUrl: true } }
-                }
+                select: {
+                    userId: true,
+                    storeName: true,
+                    type: true,
+                    description: true,
+                    storeImageUrl: true,
+                    address: true,
+                    isApproved: true,
+                    user: { select: { fullName: true } }
+                } as any
             }),
             prisma.merchant.count({ where })
         ]);
 
+        // Map to customer-friendly format
+        const formatted = (merchants as any[]).map((m: any) => ({
+            id: m.userId,
+            userId: m.userId,
+            storeName: m.storeName,
+            logoUrl: m.storeImageUrl ?? null,
+            category: m.type,
+            description: m.description,
+            deliveryTime: '30-45 دقيقة',
+            isOpen: true,
+            ownerName: m.user?.fullName
+        }));
+
         res.json({
             status: 'success',
             data: {
-                merchants,
+                merchants: formatted,
                 pagination: {
                     total,
                     page: Number(page),
