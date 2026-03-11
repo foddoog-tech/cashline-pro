@@ -1,4 +1,4 @@
-﻿import { Request, Response } from 'express';
+import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { WalletService } from '../services/wallet.service';
@@ -41,8 +41,36 @@ export const getDriverProfile = async (req: Request, res: Response) => {
         console.error('Error getting driver profile:', error);
         res.status(500).json({
             status: 'error',
-            message: 'ط­ط¯ط« ط®ط·ط£ ظپظٹ ط¬ظ„ط¨ ط§ظ„ط¨ظٹط§ظ†ط§طھ'
+            message: 'حدث خطأ في جلب البيانات'
         });
+    }
+};
+
+// Update Driver Profile
+export const updateDriverProfile = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.userId;
+        const { vehicleType, vehicleNumber, bankName, accountNumber, accountName } = req.body;
+
+        const driver = await prisma.driver.findUnique({ where: { userId } });
+        if (!driver) return res.status(404).json({ status: 'error', message: 'المندوب غير موجود' });
+
+        const updated = await prisma.driver.update({
+            where: { userId },
+            data: {
+                ...(vehicleType !== undefined && { vehicleType }),
+                ...(vehicleNumber !== undefined && { vehicleNumber }),
+                ...(bankName !== undefined && { bankName }),
+                ...(accountNumber !== undefined && { accountNumber }),
+                ...(accountName !== undefined && { accountName }),
+            },
+            include: { user: { select: { fullName: true, phone: true } } }
+        });
+
+        res.json({ status: 'success', data: updated });
+    } catch (error) {
+        console.error('Error updating driver profile:', error);
+        res.status(500).json({ status: 'error', message: 'حدث خطأ في تحديث البيانات' });
     }
 };
 
