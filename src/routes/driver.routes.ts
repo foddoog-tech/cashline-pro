@@ -10,6 +10,7 @@ router.use(authenticate);
 // Profile
 router.get('/profile', driverController.getDriverProfile);
 router.put('/profile', driverController.updateDriverProfile);
+router.put('/resubmit', driverController.resubmitApplication);
 
 // Location
 router.put('/location', driverController.updateLocation);

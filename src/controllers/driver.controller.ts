@@ -74,6 +74,68 @@ export const updateDriverProfile = async (req: Request, res: Response) => {
     }
 };
 
+// Resubmit Application
+export const resubmitApplication = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.userId;
+        const { 
+            fullName, 
+            vehicleType, 
+            vehicleNumber, 
+            bankName, 
+            accountNumber, 
+            accountName, 
+            idImageUrl, 
+            drivingLicenseUrl,
+            vehicleImageUrl 
+        } = req.body;
+
+        // Update User Profile
+        if (fullName) {
+            await prisma.user.update({
+                where: { id: userId },
+                data: { fullName }
+            });
+        }
+
+        // Update Driver Profile
+        const driver = await prisma.driver.update({
+            where: { userId },
+            data: {
+                ...(vehicleType !== undefined && { vehicleType }),
+                ...(vehicleNumber !== undefined && { vehicleNumber }),
+                ...(bankName !== undefined && { bankName }),
+                ...(accountNumber !== undefined && { accountNumber }),
+                ...(accountName !== undefined && { accountName }),
+                ...(idImageUrl && { idImageUrl }),
+                ...(drivingLicenseUrl && { drivingLicenseUrl }),
+                ...(vehicleImageUrl && { vehicleImageUrl }),
+                isApproved: false, // Ensure it's false and awaits approval again
+            }
+        });
+
+        // Delete any rejection notifications so the user goes back to pending status
+        await prisma.notification.deleteMany({
+            where: {
+                userId,
+                type: 'ACCOUNT_REJECTED'
+            }
+        });
+
+        res.json({
+            status: 'success',
+            message: 'تم إعادة تقديم الطلب بنجاح',
+            data: driver
+        });
+    } catch (error) {
+        console.error('Error resubmitting driver application:', error);
+        res.status(500).json({
+            status: 'error',
+            message: 'حدث خطأ أثناء إعادة تقديم الطلب'
+        });
+    }
+};
+
 // Update Driver Location
 export const updateLocation = async (req: Request, res: Response) => {
     try {
