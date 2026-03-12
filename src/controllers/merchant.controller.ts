@@ -1,4 +1,4 @@
-﻿import { Request, Response } from 'express';
+import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -64,14 +64,82 @@ export const updateMerchantProfile = async (req: Request, res: Response) => {
 
         res.json({
             status: 'success',
-            message: 'طھظ… طھط­ط¯ظٹط« ط§ظ„ط¨ظٹط§ظ†ط§طھ ط¨ظ†ط¬ط§ط­',
+            message: 'تم تحديث البيانات بنجاح',
             data: merchant
         });
     } catch (error) {
         console.error('Error updating merchant profile:', error);
         res.status(500).json({
             status: 'error',
-            message: 'ط­ط¯ط« ط®ط·ط£ ظپظٹ طھط­ط¯ظٹط« ط§ظ„ط¨ظٹط§ظ†ط§طھ'
+            message: 'حدث خطأ في تحديث البيانات'
+        });
+    }
+};
+
+// Resubmit Merchant Application
+export const resubmitApplication = async (req: Request, res: Response) => {
+    try {
+        const userId = (req as any).user.userId;
+        const { 
+            fullName, 
+            storeName, 
+            description, 
+            address, 
+            lat, 
+            lng, 
+            bankName, 
+            accountNumber, 
+            accountName, 
+            licenseNumber, 
+            idImageUrl, 
+            licenseImageUrl 
+        } = req.body;
+
+        // Update User Profile
+        if (fullName) {
+            await prisma.user.update({
+                where: { id: userId },
+                data: { fullName }
+            });
+        }
+
+        // Update Merchant Profile
+        const merchant = await prisma.merchant.update({
+            where: { userId },
+            data: {
+                storeName,
+                description,
+                address,
+                lat,
+                lng,
+                bankName,
+                accountNumber,
+                accountName,
+                licenseNumber,
+                ...(idImageUrl && { idImageUrl }),
+                ...(licenseImageUrl && { licenseImageUrl }),
+                isApproved: false, // Ensure it's false and awaits approval again
+            }
+        });
+
+        // Delete any rejection notifications so the user goes back to pending status
+        await prisma.notification.deleteMany({
+            where: {
+                userId,
+                type: 'ACCOUNT_REJECTED'
+            }
+        });
+
+        res.json({
+            status: 'success',
+            message: 'تم إعادة تقديم الطلب بنجاح',
+            data: merchant
+        });
+    } catch (error) {
+        console.error('Error resubmitting merchant application:', error);
+        res.status(500).json({
+            status: 'error',
+            message: 'حدث خطأ في إعادة تقديم الطلب'
         });
     }
 };

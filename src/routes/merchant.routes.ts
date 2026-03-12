@@ -11,6 +11,7 @@ router.use(authenticate);
 // Profile
 router.get('/profile', merchantController.getMerchantProfile);
 router.put('/profile', merchantController.updateMerchantProfile);
+router.put('/resubmit', merchantController.resubmitApplication);
 
 // Products
 router.get('/products', merchantController.getMerchantProducts);

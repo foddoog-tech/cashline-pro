@@ -613,9 +613,46 @@ export const getProfile = async (req: Request, res: Response, next: NextFunction
       });
     }
 
+    // Check Approval Status for DRIVER and MERCHANT
+    let isApproved = true;
+    let rejectionReason = null;
+
+    if (user.role === 'DRIVER') {
+      const driver = await prisma.driver.findUnique({ where: { userId: user.id } });
+      isApproved = driver?.isApproved ?? false;
+
+      if (!isApproved) {
+        // Fetch rejection reason
+        const notification = await prisma.notification.findFirst({
+          where: { userId: user.id, type: 'ACCOUNT_REJECTED' },
+          orderBy: { createdAt: 'desc' }
+        });
+        rejectionReason = notification?.data ? (notification.data as any).reason : null;
+      }
+
+    } else if (user.role === 'MERCHANT' || user.role === 'FAMILY_PRODUCER') {
+      const merchant = await prisma.merchant.findUnique({ where: { userId: user.id } });
+      isApproved = merchant?.isApproved ?? false;
+
+      if (!isApproved) {
+        // Fetch rejection reason
+        const notification = await prisma.notification.findFirst({
+          where: { userId: user.id, type: 'ACCOUNT_REJECTED' },
+          orderBy: { createdAt: 'desc' }
+        });
+        rejectionReason = notification?.data ? (notification.data as any).reason : null;
+      }
+    }
+
     res.json({
       status: 'success',
-      data: { user }
+      data: {
+        user: {
+          ...user,
+          isApproved,
+          rejectionReason,
+        }
+      }
     });
   } catch (error) {
     next(error);
